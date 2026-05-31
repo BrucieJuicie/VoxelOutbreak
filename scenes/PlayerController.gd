@@ -1,24 +1,35 @@
 extends CharacterBody3D
 
+signal health_changed(health: int, max_health: int)
+signal died
+
 @export var walk_speed: float = 6.0
 @export var sprint_speed: float = 10.0
 @export var jump_velocity: float = 5.0
 @export var mouse_sensitivity: float = 0.002
+@export var max_health: int = 100
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity") as float
 var pitch: float = 0.0
+var health: int = 100
 
 @onready var camera: Camera3D = $Camera3D
 
 func _ready() -> void:
+	health = max_health
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	health_changed.emit(health, max_health)
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
 	if event is InputEventMouseMotion:
-		rotation.y -= event.relative.x * mouse_sensitivity
-		pitch -= event.relative.y * mouse_sensitivity
-		pitch = clamp(pitch, deg_to_rad(-85), deg_to_rad(85))
-		camera.rotation.x = pitch
+		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			rotation.y -= event.relative.x * mouse_sensitivity
+			pitch -= event.relative.y * mouse_sensitivity
+			pitch = clamp(pitch, deg_to_rad(-85), deg_to_rad(85))
+			camera.rotation.x = pitch
 
 	if event.is_action_pressed("ui_cancel"):
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -53,3 +64,13 @@ func _physics_process(delta: float) -> void:
 		velocity.y = jump_velocity
 
 	move_and_slide()
+
+func take_damage(amount: int) -> void:
+	if health <= 0:
+		return
+
+	health = max(health - amount, 0)
+	health_changed.emit(health, max_health)
+
+	if health == 0:
+		died.emit()
