@@ -2,22 +2,32 @@ extends CharacterBody3D
 
 signal died(zombie: Node)
 
-@export var max_health: int = 50
+@export var max_health: int = 70
 @export var speed: float = 2.6
 @export var attack_damage: int = 10
 @export var attack_range: float = 1.4
 @export var attack_cooldown: float = 0.9
 @export var points_value: int = 10
 
-var health: int = 50
+var health: int = 70
 var player: Node3D
 var game_manager: Node
+var map_generator: Node
 var attack_timer: float = 0.0
+var path_update_timer: float = 0.0
+var path_update_interval: float = 0.45
+var path_points: Array[Vector3] = []
+var path_index: int = 0
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity") as float
 
-func setup(target_player: Node3D, manager: Node) -> void:
+func setup(target_player: Node3D, manager: Node, navigation_map: Node = null) -> void:
 	player = target_player
 	game_manager = manager
+	map_generator = navigation_map
+
+func configure_for_wave(wave: int, extra_health_per_wave: int) -> void:
+	max_health = 70 + (max(wave - 1, 0) * extra_health_per_wave)
+	health = max_health
 
 func _ready() -> void:
 	health = max_health
@@ -30,13 +40,14 @@ func _physics_process(delta: float) -> void:
 		return
 
 	attack_timer = max(attack_timer - delta, 0.0)
+	path_update_timer = max(path_update_timer - delta, 0.0)
 
 	var to_player := player.global_position - global_position
 	to_player.y = 0.0
 	var distance := to_player.length()
 
 	if distance > attack_range:
-		var direction := to_player.normalized()
+		var direction: Vector3 = _get_pathing_direction()
 		velocity.x = direction.x * speed
 		velocity.z = direction.z * speed
 	else:
@@ -51,9 +62,45 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+func _get_pathing_direction() -> Vector3:
+	if path_update_timer <= 0.0:
+		_refresh_path()
+
+	var target_position: Vector3 = player.global_position
+
+	while path_index < path_points.size():
+		var waypoint: Vector3 = path_points[path_index]
+		var to_waypoint: Vector3 = waypoint - global_position
+		to_waypoint.y = 0.0
+
+		if to_waypoint.length() > 0.55:
+			target_position = waypoint
+			break
+
+		path_index += 1
+
+	var direction: Vector3 = target_position - global_position
+	direction.y = 0.0
+	if direction.length() <= 0.01:
+		return Vector3.ZERO
+
+	return direction.normalized()
+
+func _refresh_path() -> void:
+	path_update_timer = path_update_interval
+	path_index = 0
+
+	if map_generator == null or not map_generator.has_method("get_path_world_points"):
+		path_points.clear()
+		return
+
+	var new_path: Array = map_generator.call("get_path_world_points", global_position, player.global_position)
+	path_points.clear()
+	for waypoint in new_path:
+		path_points.append(waypoint as Vector3)
+
 func take_damage(amount: int) -> void:
 	health -= amount
-	print("Zombie took ", amount, " damage. Health: ", health)
 
 	if health <= 0:
 		_die()
@@ -76,8 +123,8 @@ func _build_collision() -> void:
 	collision_shape.name = "Hitbox"
 
 	var shape: CapsuleShape3D = CapsuleShape3D.new()
-	shape.radius = 0.55
-	shape.height = 2.0
+	shape.radius = 0.75
+	shape.height = 2.2
 
 	collision_shape.shape = shape
 	collision_shape.position = Vector3(0, 1.0, 0)

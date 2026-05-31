@@ -2,7 +2,7 @@ extends Node
 
 signal ammo_changed(ammo: int, reserve_ammo: int)
 
-@export var damage: int = 25
+@export var damage: int = 40
 @export var fire_rate: float = 0.25
 @export var shot_range: float = 70.0
 @export var magazine_size: int = 12
@@ -49,17 +49,13 @@ func try_fire() -> void:
 	var result: Dictionary = camera.get_world_3d().direct_space_state.intersect_ray(query)
 
 	if result.is_empty():
-		print("Shot missed")
 		return
 
 	var collider: Object = result.get("collider") as Object
-	print("Shot hit: ", collider)
-
 	var damage_target: Object = collider
 
 	if damage_target != null and damage_target.has_method("take_damage"):
 		damage_target.call("take_damage", damage)
-		print("Zombie hit for ", damage, " damage")
 		return
 
 	if collider is Node:
@@ -69,7 +65,6 @@ func try_fire() -> void:
 		while parent != null:
 			if parent.has_method("take_damage"):
 				parent.call("take_damage", damage)
-				print("Zombie parent hit for ", damage, " damage")
 				return
 			parent = parent.get_parent()
 
@@ -82,3 +77,8 @@ func reload() -> void:
 	ammo += loaded
 	reserve_ammo -= loaded
 	ammo_changed.emit(ammo, reserve_ammo)
+
+func add_reserve_ammo(amount: int) -> bool:
+	reserve_ammo += amount
+	ammo_changed.emit(ammo, reserve_ammo)
+	return true
